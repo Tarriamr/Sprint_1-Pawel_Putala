@@ -1,0 +1,133 @@
+body {
+  justify-self: center;
+  background-color: #cccccc;
+  margin: 25px 0;
+  max-width: 1900px;
+  min-width: 600px;
+  width: 100%;
+  display: grid;
+  grid-template-rows: max-content;
+  grid-template-columns: 1fr;
+  place-items: center;
+  gap: 25px;
+  font-size: 16px;
+}
+
+.filter {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  align-items: center;
+  gap: 25px;
+}
+
+button {
+  background-color: #0000ff;
+  border-radius: 10px;
+  border: none;
+  color: white;
+  padding: 6px 30px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+#goTo {
+  font-size: 14px;
+  font-weight: 200;
+}
+
+#left::before {
+  content: "\2190";
+}
+
+#right::before {
+  content: "\2192";
+}
+
+.displayedElements {
+  display: flex;
+  flex-wrap: wrap;
+  place-content: center;
+  gap: 20px;
+  width: 90%;
+}
+
+h2 {
+  display: grid;
+  font-size: 14px;
+  text-align: center;
+  margin: 10px 0;
+}
+
+h3 {
+  font-size: 12px;
+  margin: 0;
+}
+
+.character {
+  position: relative;
+  display: grid;
+  grid-auto-rows: max-content;
+  background-color: #ffffff;
+  border-radius: 10px;
+  width: 130px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.character::-webkit-scrollbar {
+  width: 0;
+}
+
+.avatar {
+  justify-self: center;
+  width: 130px;
+  height: 130px;
+  border-radius: 10px;
+  background-size: cover;
+}
+
+.empty {
+  width: 90%;
+  font-size: 16px;
+  text-align: center;
+}
+
+.removeButton {
+  position: absolute;
+  width: 100px;
+  bottom: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: #707070;
+  background-color: #eeeeee;
+  border-radius: 5px;
+  border: solid 1px #707070;
+  padding: 3px 10px;
+  margin-bottom: 10px;
+  left: 50%;
+  transform: translate(-50%);
+}
+
+#createCharacter {
+  display: grid;
+  gap: 10px;
+  padding: 25px;
+  width: 350px;
+  background-color: #ffffff;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+#addCharacter {
+  font-size: 14px;
+}
+
+h1 {
+  place-self: center;
+  font-size: 24px;
+  margin: 0;
+}
