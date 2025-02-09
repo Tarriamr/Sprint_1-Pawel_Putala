@@ -111,7 +111,7 @@ const handleGetCharacters = async (req, res) => {
 
   if (nameFilter) {
     filteredCharacters = filteredCharacters.filter((char) =>
-      char.name.toLowerCase().includes(nameFilter),
+      char.name.toLowerCase().includes(nameFilter.toLowerCase()),
     );
   }
 

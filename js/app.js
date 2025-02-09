@@ -8,15 +8,15 @@ let filters = {
   status: "",
 };
 
-const $goToButton = document.querySelector("#goTo");
+const $buttonGoTo = document.querySelector("#goTo");
 const $displayElements = document.querySelector(".displayedElements");
-const $leftButton = document.querySelector("#left");
-const $rightButton = document.querySelector("#right");
-const $nameInput = document.querySelector("#name");
-const $statusRadios = document.querySelectorAll('input[type="radio"]');
+const $buttonLeft = document.querySelector("#left");
+const $buttonRight = document.querySelector("#right");
+const $inputName = document.querySelector("#name");
+const $radiosStatus = document.querySelectorAll('input[type="radio"]');
 const $info = document.querySelector(".info");
 
-$goToButton.textContent = "Przejdź do Live Server";
+$buttonGoTo.textContent = "Przejdź do Live Server";
 
 async function fetchCharacters(pageNumber, filters) {
   try {
@@ -32,8 +32,7 @@ async function fetchCharacters(pageNumber, filters) {
         console.error("No characters found.");
         return null;
       } else {
-        const message = `An error occurred: ${response.status}`;
-        throw new Error(message);
+        throw new Error(`An error occurred: ${response.status}`);
       }
     }
 
@@ -44,7 +43,6 @@ async function fetchCharacters(pageNumber, filters) {
     } = data;
     maxPage = pages;
     currentPage = pageNumber;
-    console.log("max page:", maxPage);
 
     return results.map((character) => ({
       id: character.id,
@@ -55,7 +53,7 @@ async function fetchCharacters(pageNumber, filters) {
     }));
   } catch (error) {
     console.error("Error fetching characters:", error);
-    throw new Error(`Błąd pobierania danych z API: ${error.message}`);
+    throw new Error(`The error of getting data from API: ${error.message}`);
   }
 }
 
@@ -84,101 +82,100 @@ function displayCharacters(characters) {
   });
 }
 
-function updateCarouselButtons() {
+function updateVisibility() {
   const $createCharacter = document.querySelector("#createCharacter");
 
-  $leftButton.style.visibility = maxPage === 1 ? "hidden" : "visible";
-  $rightButton.style.visibility = maxPage === 1 ? "hidden" : "visible";
+  $buttonLeft.style.visibility = maxPage === 1 ? "hidden" : "visible";
+  $buttonRight.style.visibility = maxPage === 1 ? "hidden" : "visible";
   $createCharacter.style.visibility = url === urlAPI ? "hidden" : "visible";
 }
 
 function getNewCharacters(filters, pageNumber = 1) {
-  console.log(url);
   fetchCharacters(pageNumber, filters)
     .then((characters) => {
       displayCharacters(characters);
-      updateCarouselButtons();
+      updateVisibility();
     })
     .catch((error) => {
-      console.error("Wystąpił błąd:", error);
+      console.error("An error occurred:", error);
       $displayElements.innerHTML = "";
       const $message = document.createElement("div");
       $message.className = "empty";
       $message.textContent =
         "Wystąpił błąd podczas pobierania danych. Spróbuj ponownie później.";
       $displayElements.append($message);
-      updateCarouselButtons();
+      currentPage = 1;
+      maxPage = 1;
+      updateVisibility();
     });
 }
 
 function createCharacter(id, image, name, species, status) {
-  const divCharacter = document.createElement("div");
-  divCharacter.className = "character";
-  divCharacter.style.height = url === urlAPI ? "230px" : "270px";
+  const characterContainer = document.createElement("div");
+  characterContainer.className = "character";
+  characterContainer.style.height = url === urlAPI ? "230px" : "270px";
 
-  const avatarCharacter = document.createElement("div");
-  avatarCharacter.className = "avatar";
-  avatarCharacter.style.backgroundImage = `url("${image}")`;
+  const characterAvatar = document.createElement("div");
+  characterAvatar.className = "avatar";
+  characterAvatar.style.backgroundImage = `url("${image}")`;
 
-  const nameCharacter = document.createElement("h2");
-  nameCharacter.className = "name";
-  nameCharacter.textContent = name;
+  const characterName = document.createElement("h2");
+  characterName.className = "name";
+  characterName.textContent = name;
 
-  const statusCharacter = document.createElement("h3");
-  statusCharacter.className = "status";
-  statusCharacter.textContent = `Status: ${status}`;
+  const characterStatus = document.createElement("h3");
+  characterStatus.className = "status";
+  characterStatus.textContent = `Status: ${status}`;
 
-  const speciesCharacter = document.createElement("h3");
-  speciesCharacter.className = "species";
-  speciesCharacter.textContent = `Gatunek: ${species}`;
+  const characterSpecies = document.createElement("h3");
+  characterSpecies.className = "species";
+  characterSpecies.textContent = `Gatunek: ${species}`;
 
-  divCharacter.append(
-    avatarCharacter,
-    nameCharacter,
-    statusCharacter,
-    speciesCharacter,
+  characterContainer.append(
+    characterAvatar,
+    characterName,
+    characterStatus,
+    characterSpecies,
   );
 
-  const removeCharacterButton = document.createElement("button");
-  removeCharacterButton.id = id;
-  removeCharacterButton.className = "removeButton";
-  removeCharacterButton.textContent = "Usuń postać";
-  removeCharacterButton.onclick = () => {
+  const buttonRemoveCharacter = document.createElement("button");
+  buttonRemoveCharacter.id = id;
+  buttonRemoveCharacter.className = "removeButton";
+  buttonRemoveCharacter.textContent = "Usuń postać";
+  buttonRemoveCharacter.onclick = () => {
     removeCharacter(id).then(() => getNewCharacters(filters));
   };
 
   if (url === urlLS) {
-    divCharacter.append(removeCharacterButton);
+    characterContainer.append(buttonRemoveCharacter);
   }
 
-  return divCharacter;
+  return characterContainer;
 }
 
-$leftButton.onclick = () => {
+$buttonLeft.onclick = () => {
   const newPage = currentPage === 1 ? maxPage : --currentPage;
   getNewCharacters(filters, newPage);
 };
 
-$rightButton.onclick = () => {
+$buttonRight.onclick = () => {
   const newPage = currentPage === maxPage ? 1 : ++currentPage;
   getNewCharacters(filters, newPage);
 };
 
-$nameInput.oninput = () => {
-  filters.name = $nameInput.value.trim();
+$inputName.oninput = () => {
+  filters.name = $inputName.value.trim();
   getNewCharacters(filters);
 };
 
-$statusRadios.forEach((radio) => {
+$radiosStatus.forEach((radio) => {
   radio.onchange = () => {
     filters.status = radio.value;
     getNewCharacters(filters);
   };
 });
 
-getNewCharacters(filters);
-
-$goToButton.onclick = () => {
+$buttonGoTo.onclick = () => {
   const $character = document.querySelectorAll(".character");
   if (url === urlAPI) {
     fetchCharacters(currentPage, filters).then((result) => {
@@ -206,12 +203,12 @@ $goToButton.onclick = () => {
         });
 
       console.log("url after goto:", url);
-      $goToButton.textContent = "Przejdź do API";
+      $buttonGoTo.textContent = "Przejdź do API";
       getNewCharacters(filters);
       $info.style.visibility = "hidden";
     });
   } else {
-    $goToButton.textContent = "Przejdź do Live Server";
+    $buttonGoTo.textContent = "Przejdź do Live Server";
     url = urlAPI;
     getNewCharacters(filters);
     $info.style.visibility = "visible";
@@ -268,3 +265,5 @@ async function addCharacter() {
     console.error(e);
   }
 }
+
+getNewCharacters(filters);
