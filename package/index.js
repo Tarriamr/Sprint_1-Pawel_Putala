@@ -1,242 +1,189 @@
 const http = require("http");
 const fs = require("fs").promises;
-const EventEmitter = require("events");
 
-const CONFIG = {
-  PORT: process.env.PORT || 3000,
-  PAGE_SIZE: 5,
-};
+const PORT = process.env.PORT || 3000;
+const PAGE_SIZE = 5;
 
-const characterTemplate = {
-  name: "",
-  species: "",
-  status: "",
-  image: "",
-};
+const characterTemplate = { name: "", species: "", status: "", image: "" };
 
-const CORS_HEADERS = {
+const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
 const setCorsHeaders = (res) => {
-  for (const header in CORS_HEADERS) {
-    res.setHeader(header, CORS_HEADERS[header]);
+  for (const header in corsHeaders) {
+    res.setHeader(header, corsHeaders[header]);
   }
 };
 
 const saveData = async (characters) => {
-  const data = JSON.stringify(characters, null, 2);
-  await fs.writeFile("db.json", data);
+  await fs.writeFile("db.json", JSON.stringify(characters, null, 2));
 };
 
-const sendError = (res, statusCode, message) => {
-  res.writeHead(statusCode);
-  return res.end(JSON.stringify({ message }));
+const sendError = (res, code, message) => {
+  res.writeHead(code);
+  res.end(JSON.stringify({ message }));
 };
 
-const readFileAndParse = async (res) => {
+const loadCharacters = async () => {
   try {
     const data = await fs.readFile("db.json");
     return JSON.parse(data.toString());
-  } catch (err) {
-    console.error("Błąd odczytu pliku db.json:", err);
-    return sendError(res, 500, "Błąd serwera");
+  } catch (error) {
+    return [];
   }
 };
 
-const validateCharacter = (newCharacter, res) => {
+const validateCharacter = (character, res) => {
   for (const key in characterTemplate) {
-    if (!(key in newCharacter)) {
-      return sendError(res, 400, `Brakujące pole: ${key}`);
-    }
-    if (typeof newCharacter[key] !== typeof characterTemplate[key]) {
-      return sendError(res, 400, `Niepoprawny typ pola: ${key}`);
+    if (
+      !(key in character) ||
+      typeof character[key] !== typeof characterTemplate[key]
+    ) {
+      sendError(res, 400, `Invalid or missing field: ${key}`);
+      return null;
     }
   }
-  return newCharacter;
+  return character;
 };
 
-const dataInitialized = new EventEmitter();
+let dataInitialized = new Promise((resolve) => {
+  const handleInitialize = (req, res) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const characters = JSON.parse(body)
+          .map((character, index) => ({
+            ...validateCharacter(character, res),
+            id: (index + 1).toString(),
+          }))
+          .filter((character) => character);
 
-const handleInit = async (req, res) => {
-  let initBody = "";
-  req.on("data", (chunk) => (initBody += chunk));
-  req.on("end", async () => {
-    if (!initBody) {
-      return sendError(res, 400, "Brak danych inicjalizacyjnych.");
-    }
-    try {
-      const initialCharacters = JSON.parse(initBody);
+        if (characters.length === 0)
+          return sendError(res, 400, "Invalid initialization data");
+        if (characters.length > 20)
+          return sendError(res, 400, "Too many initial characters");
 
-      if (!Array.isArray(initialCharacters) || initialCharacters.length > 20) {
-        return sendError(
-          res,
-          400,
-          "Niepoprawne dane inicjalizacyjne. Oczekiwana tablica do 20 elementów.",
-        );
+        saveData(characters)
+          .then(() => {
+            resolve();
+            res.writeHead(201);
+            res.end(
+              JSON.stringify({ message: "Data initialized", characters }),
+            );
+          })
+          .catch((error) => sendError(res, 500, "Error saving data"));
+      } catch (error) {
+        sendError(res, 400, "Invalid JSON");
       }
-
-      const validatedCharacters = initialCharacters
-        .map((newCharacter) => validateCharacter(newCharacter, res))
-        .filter((char) => char !== null);
-
-      const charactersWithId = validatedCharacters.map(
-        (newCharacter, index) => ({
-          ...newCharacter,
-          id: index + 1,
-        }),
-      );
-
-      await saveData(charactersWithId);
-      res.writeHead(201);
-      res.end(
-        JSON.stringify({
-          message: "Dane zainicjalizowane pomyślnie",
-          characters: charactersWithId,
-        }),
-      );
-
-      dataInitialized.emit("data-initialized");
-    } catch (error) {
-      console.error("Błąd inicjalizacji:", error);
-      sendError(res, 400, "Niepoprawne dane");
-    }
-  });
-};
-
-const handleGetCharacters = async (req, res) => {
-  const getCharactersData = async () => {
-    let characters = await readFileAndParse(res);
-    if (!Array.isArray(characters)) {
-      console.error("Błąd: characters nie jest tablicą.");
-      characters = [];
-    }
-
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const page = parseInt(url.searchParams.get("page")) || 1;
-    const statusFilter = url.searchParams.get("status")?.toLowerCase();
-    const nameFilter = url.searchParams.get("name")?.toLowerCase();
-
-    let filteredCharacters = characters;
-
-    if (statusFilter) {
-      filteredCharacters = filteredCharacters.filter(
-        (char) => char.status.toLowerCase() === statusFilter,
-      );
-    }
-
-    if (nameFilter) {
-      const regex = new RegExp(`^${nameFilter.trim()}$`, "i");
-      filteredCharacters = filteredCharacters.filter((char) =>
-        regex.test(char.name),
-      );
-    }
-
-    const startIndex = (page - 1) * CONFIG.PAGE_SIZE;
-    const endIndex = startIndex + CONFIG.PAGE_SIZE;
-    const pageCharacters = filteredCharacters.slice(startIndex, endIndex);
-    const totalPages = Math.ceil(filteredCharacters.length / CONFIG.PAGE_SIZE);
-
-    const response = {
-      info: {
-        pages: totalPages,
-      },
-      results: pageCharacters.map((character) => ({
-        id: character.id,
-        name: character.name,
-        status: character.status,
-        species: character.species,
-        image: character.image,
-      })),
-    };
-
-    res.writeHead(200);
-    res.end(JSON.stringify(response));
+    });
   };
 
-  if (dataInitialized.listenerCount("data-initialized") === 0) {
-    await getCharactersData();
-  } else {
-    dataInitialized.once("data-initialized", async () => {
-      await getCharactersData();
+  const handlePostCharacter = (req, res) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const character = validateCharacter(JSON.parse(body), res);
+        if (!character) return;
+
+        const characters = await loadCharacters();
+        character.id = (
+          characters.reduce((max, c) => Math.max(max, parseInt(c.id) || 0), 0) +
+          1
+        ).toString();
+        characters.push(character);
+
+        await saveData(characters);
+        res.writeHead(201);
+        res.end(JSON.stringify(character));
+      } catch (error) {
+        sendError(res, 500, "Server error");
+      }
     });
-  }
-};
+  };
 
-const handlePostCharacter = async (req, res) => {
-  let body = "";
-  req.on("data", (chunk) => (body += chunk));
-  req.on("end", async () => {
-    if (!body) {
-      return sendError(res, 400, "Brak danych postaci.");
-    }
-    let characters = await readFileAndParse(res);
-    if (!Array.isArray(characters)) {
-      characters = [];
-    }
+  const handleGetCharacters = async (req, res) => {
+    await dataInitialized;
+    const characters = await loadCharacters();
 
-    try {
-      const newCharacter = JSON.parse(body);
+    const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
+    const page = parseInt(searchParams.get("page") || 1);
+    const status = searchParams.get("status")?.toLowerCase();
+    const name = searchParams.get("name")?.toLowerCase();
 
-      const validatedCharacter = validateCharacter(newCharacter, res);
-      if (!validatedCharacter) return;
+    const filteredCharacters = characters.filter(
+      (character) =>
+        (!status || character.status.toLowerCase() === status) &&
+        (!name || character.name.toLowerCase().includes(name)),
+    );
+    const start = (page - 1) * PAGE_SIZE;
+    const end = start + PAGE_SIZE;
+    const results = filteredCharacters
+      .slice(start, end)
+      .map(({ id, name, status, species, image }) => ({
+        id,
+        name,
+        status,
+        species,
+        image,
+      }));
+    const pages = Math.ceil(filteredCharacters.length / PAGE_SIZE);
 
-      const maxId = characters.reduce((max, c) => Math.max(max, c.id), 0);
-      newCharacter.id = maxId + 1 || 1;
-      characters.push(newCharacter);
-      await saveData(characters);
-      res.writeHead(201);
-      res.end(JSON.stringify(newCharacter));
-    } catch (error) {
-      console.error("Błąd dodawania postaci:", error);
-      sendError(res, 400, "Niepoprawne dane");
-    }
-  });
-};
-
-const server = http.createServer(async (req, res) => {
-  setCorsHeaders(res);
-  res.setHeader("Content-Type", "application/json");
-
-  if (req.method === "OPTIONS") {
+    // Dodajemy nagłówki Cache-Control i Connection:
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate",
+    );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Connection", "close"); // Dodajemy Connection: close
     res.writeHead(200);
-    res.end();
-    return;
-  }
+    res.end(JSON.stringify({ info: { pages }, results }));
+  };
 
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.pathname;
+  const handleDeleteCharacter = async (req, res) => {
+    await dataInitialized;
+    const characters = await loadCharacters();
+    const id = req.url.substring("/api/character/".length);
+    const index = characters.findIndex((character) => character.id === id);
 
-  if (path.startsWith("/api/character")) {
-    const subPath = path.substring("/api/character".length);
-    switch (req.method) {
-      case "GET":
-        if (subPath === "") {
-          return handleGetCharacters(req, res);
-        } else if (/^\/\d+$/.test(subPath)) {
-          return handleGetCharacterById(req, res);
-        }
-        break;
-      case "DELETE":
-        if (/^\/\d+$/.test(subPath)) {
-          return handleDeleteCharacter(req, res);
-        }
-        break;
-      case "POST":
-        if (subPath === "") {
-          return handlePostCharacter(req, res);
-        } else if (subPath === "/init") {
-          return handleInit(req, res);
-        }
-        break;
-    }
-  }
+    if (index === -1) return sendError(res, 404, "Character not found");
 
-  return sendError(res, 404, "Route not found");
-});
+    const deletedCharacter = characters.splice(index, 1)[0];
+    await saveData(characters);
 
-server.listen(CONFIG.PORT, () => {
-  console.log(`Server is running on http://localhost:${CONFIG.PORT}`);
+    res.writeHead(200);
+    res.end(
+      JSON.stringify({
+        message: "Character deleted",
+        character: deletedCharacter,
+      }),
+    );
+  };
+
+  const server = http.createServer((req, res) => {
+    setCorsHeaders(res);
+    res.setHeader("Content-Type", "application/json");
+
+    if (req.method === "OPTIONS") return res.end();
+
+    const { pathname } = new URL(req.url, `http://${req.headers.host}`);
+
+    if (pathname === "/api/character/init" && req.method === "POST")
+      return handleInitialize(req, res);
+    if (pathname === "/api/character" && req.method === "POST")
+      return handlePostCharacter(req, res);
+    if (pathname === "/api/character" && req.method === "GET")
+      return handleGetCharacters(req, res);
+    if (pathname.startsWith("/api/character/") && req.method === "DELETE")
+      return handleDeleteCharacter(req, res);
+
+    sendError(res, 404, "Not found");
+  });
+
+  server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 });

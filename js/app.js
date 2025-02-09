@@ -3,10 +3,7 @@ const urlLS = "http://localhost:3000/api/character";
 let url = urlAPI;
 let maxPage = 1;
 let currentPage = 1;
-let filters = {
-  name: "",
-  status: "",
-};
+let filters = { name: "", status: "" };
 
 const $buttonGoTo = document.querySelector("#goTo");
 const $displayElements = document.querySelector(".displayedElements");
@@ -20,36 +17,30 @@ $buttonGoTo.textContent = "Przejdź do Live Server";
 
 async function fetchCharacters(pageNumber, filters) {
   try {
-    const params = new URLSearchParams({
-      page: pageNumber,
-      name: filters.name,
-      status: filters.status,
-    });
+    const params = new URLSearchParams({ page: pageNumber, ...filters });
     const response = await fetch(`${url}?${params}`);
 
     if (!response.ok) {
       if (response.status === 404) {
         console.error("No characters found.");
         return null;
-      } else {
-        throw new Error(`An error occurred: ${response.status}`);
       }
+      throw new Error(`An error occurred: ${response.status}`);
     }
 
-    const data = await response.json();
     const {
       info: { pages },
       results,
-    } = data;
+    } = await response.json();
     maxPage = pages;
     currentPage = pageNumber;
 
-    return results.map((character) => ({
-      id: character.id,
-      name: character.name,
-      status: character.status,
-      species: character.species,
-      image: character.image,
+    return results.map(({ id, name, status, species, image }) => ({
+      id,
+      name,
+      status,
+      species,
+      image,
     }));
   } catch (error) {
     console.error("Error fetching characters:", error);
@@ -61,56 +52,46 @@ function displayCharacters(characters) {
   $displayElements.innerHTML = "";
 
   if (!characters || characters.length === 0) {
-    const $message = document.createElement("div");
-    $message.className = "empty";
-    $message.textContent =
+    const message = document.createElement("div");
+    message.className = "empty";
+    message.textContent =
       "Nie znaleziono postaci spełniających kryteria wyszukiwania.";
-    $displayElements.append($message);
+    $displayElements.append(message);
     return;
   }
 
-  characters.forEach((character) => {
-    $displayElements.append(
-      createCharacter(
-        character.id,
-        character.image,
-        character.name,
-        character.species,
-        character.status,
-      ),
-    );
-  });
+  characters.forEach((character) =>
+    $displayElements.append(createCharacter(character)),
+  );
 }
 
 function updateVisibility() {
   const $createCharacter = document.querySelector("#createCharacter");
+  const isSinglePage = maxPage === 1;
 
-  $buttonLeft.style.visibility = maxPage === 1 ? "hidden" : "visible";
-  $buttonRight.style.visibility = maxPage === 1 ? "hidden" : "visible";
+  $buttonLeft.style.visibility = isSinglePage ? "hidden" : "visible";
+  $buttonRight.style.visibility = isSinglePage ? "hidden" : "visible";
   $createCharacter.style.visibility = url === urlAPI ? "hidden" : "visible";
 }
 
 function getNewCharacters(filters, pageNumber = 1) {
   fetchCharacters(pageNumber, filters)
-    .then((characters) => {
-      displayCharacters(characters);
-      updateVisibility();
-    })
+    .then(displayCharacters)
     .catch((error) => {
       console.error("An error occurred:", error);
       $displayElements.innerHTML = "";
-      const $message = document.createElement("div");
-      $message.className = "empty";
-      $message.textContent =
+      const message = document.createElement("div");
+      message.className = "empty";
+      message.textContent =
         "Wystąpił błąd podczas pobierania danych. Spróbuj ponownie później.";
-      $displayElements.append($message);
+      $displayElements.append(message);
       currentPage = 1;
       maxPage = 1;
       updateVisibility();
     });
 }
 
-function createCharacter(id, image, name, species, status) {
+function createCharacter({ id, image, name, species, status }) {
   const characterContainer = document.createElement("div");
   characterContainer.className = "character";
   characterContainer.style.height = url === urlAPI ? "230px" : "270px";
@@ -138,15 +119,13 @@ function createCharacter(id, image, name, species, status) {
     characterSpecies,
   );
 
-  const buttonRemoveCharacter = document.createElement("button");
-  buttonRemoveCharacter.id = id;
-  buttonRemoveCharacter.className = "removeButton";
-  buttonRemoveCharacter.textContent = "Usuń postać";
-  buttonRemoveCharacter.onclick = () => {
-    removeCharacter(id).then(() => getNewCharacters(filters));
-  };
-
   if (url === urlLS) {
+    const buttonRemoveCharacter = document.createElement("button");
+    buttonRemoveCharacter.id = id;
+    buttonRemoveCharacter.className = "removeButton";
+    buttonRemoveCharacter.textContent = "Usuń postać";
+    buttonRemoveCharacter.onclick = () =>
+      removeCharacter(id).then(() => getNewCharacters(filters));
     characterContainer.append(buttonRemoveCharacter);
   }
 
@@ -178,35 +157,24 @@ $radiosStatus.forEach((radio) => {
 $buttonGoTo.onclick = () => {
   if (url === urlAPI) {
     fetchCharacters(currentPage, filters).then((result) => {
-      console.log("GoTo result:", result);
       url = urlLS;
-      console.log("GoTo url:", url);
+      $buttonGoTo.textContent = "Przejdź do API";
+      resetFilters();
+      getNewCharacters(filters);
+      $info.style.visibility = "hidden";
+
       fetch(`${urlLS}/init`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(result),
       })
         .then((response) => {
-          console.log("Response:", response.status);
           if (!response.ok) {
             throw new Error("Network response was not ok.");
           }
           return response.json();
         })
-        .then((data) => {
-          console.log("Data saved.", data);
-        })
-        .catch((error) => {
-          console.error("Error sending data: ", error);
-        });
-
-      console.log("url after goto:", url);
-      $buttonGoTo.textContent = "Przejdź do API";
-      resetFilters();
-      getNewCharacters(filters);
-      $info.style.visibility = "hidden";
+        .catch((error) => console.error("Error sending data: ", error));
     });
   } else {
     $buttonGoTo.textContent = "Przejdź do Live Server";
@@ -218,10 +186,7 @@ $buttonGoTo.onclick = () => {
 };
 
 function resetFilters() {
-  filters = {
-    name: "",
-    status: "",
-  };
+  filters = { name: "", status: "" };
   $inputName.value = "";
   $radiosStatus.forEach((radio) => (radio.checked = false));
 }
@@ -230,9 +195,7 @@ async function removeCharacter(id) {
   try {
     await fetch(`${urlLS}/${id}`, {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error(e);
@@ -244,12 +207,11 @@ async function addCharacter() {
   const addStatus = document.querySelector("#characterStatus");
   const addSpecies = document.querySelector("#characterSpecies");
   const addImage = "https://rickandmortyapi.com/api/character/avatar/3.jpeg";
+
   try {
     await fetch(`${urlLS}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: addName,
         status: addStatus,
@@ -263,14 +225,8 @@ async function addCharacter() {
         }
         return response.json();
       })
-      .then((data) => {
-        console.log("Data saved.", data);
-      })
-      .catch((error) => {
-        console.error("Error sending data: ", error);
-      });
+      .catch((error) => console.error("Error sending data: ", error));
 
-    console.log("url after add:", url);
     getNewCharacters(filters);
   } catch (e) {
     console.error(e);
