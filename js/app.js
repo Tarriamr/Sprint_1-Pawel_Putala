@@ -176,12 +176,11 @@ $radiosStatus.forEach((radio) => {
 });
 
 $buttonGoTo.onclick = () => {
-  const $character = document.querySelectorAll(".character");
   if (url === urlAPI) {
     fetchCharacters(currentPage, filters).then((result) => {
-      console.log("goTo result:", result);
+      console.log("GoTo result:", result);
       url = urlLS;
-      console.log("goTo url:", url);
+      console.log("GoTo url:", url);
       fetch(`${urlLS}/init`, {
         method: "POST",
         headers: {
@@ -190,6 +189,7 @@ $buttonGoTo.onclick = () => {
         body: JSON.stringify(result),
       })
         .then((response) => {
+          console.log("Response:", response.status);
           if (!response.ok) {
             throw new Error("Network response was not ok.");
           }
@@ -204,16 +204,27 @@ $buttonGoTo.onclick = () => {
 
       console.log("url after goto:", url);
       $buttonGoTo.textContent = "Przejdź do API";
+      resetFilters();
       getNewCharacters(filters);
       $info.style.visibility = "hidden";
     });
   } else {
     $buttonGoTo.textContent = "Przejdź do Live Server";
     url = urlAPI;
+    resetFilters();
     getNewCharacters(filters);
     $info.style.visibility = "visible";
   }
 };
+
+function resetFilters() {
+  filters = {
+    name: "",
+    status: "",
+  };
+  $inputName.value = "";
+  $radiosStatus.forEach((radio) => (radio.checked = false));
+}
 
 async function removeCharacter(id) {
   try {

@@ -1,5 +1,6 @@
 const http = require("http");
 const fs = require("fs").promises;
+const EventEmitter = require("events");
 
 const CONFIG = {
   PORT: process.env.PORT || 3000,
@@ -57,10 +58,15 @@ const validateCharacter = (newCharacter, res) => {
   return newCharacter;
 };
 
+const dataInitialized = new EventEmitter();
+
 const handleInit = async (req, res) => {
   let initBody = "";
   req.on("data", (chunk) => (initBody += chunk));
   req.on("end", async () => {
+    if (!initBody) {
+      return sendError(res, 400, "Brak danych inicjalizacyjnych.");
+    }
     try {
       const initialCharacters = JSON.parse(initBody);
 
@@ -74,7 +80,7 @@ const handleInit = async (req, res) => {
 
       const validatedCharacters = initialCharacters
         .map((newCharacter) => validateCharacter(newCharacter, res))
-        .filter(Boolean);
+        .filter((char) => char !== null);
 
       const charactersWithId = validatedCharacters.map(
         (newCharacter, index) => ({
@@ -85,101 +91,77 @@ const handleInit = async (req, res) => {
 
       await saveData(charactersWithId);
       res.writeHead(201);
-      res.end(JSON.stringify({ message: "Dane zainicjalizowane pomyślnie" }));
+      res.end(
+        JSON.stringify({
+          message: "Dane zainicjalizowane pomyślnie",
+          characters: charactersWithId,
+        }),
+      );
+
+      dataInitialized.emit("data-initialized");
     } catch (error) {
+      console.error("Błąd inicjalizacji:", error);
       sendError(res, 400, "Niepoprawne dane");
     }
   });
 };
 
 const handleGetCharacters = async (req, res) => {
-  const characters = await readFileAndParse(res);
-  if (!characters) return;
+  const getCharactersData = async () => {
+    let characters = await readFileAndParse(res);
+    if (!Array.isArray(characters)) {
+      console.error("Błąd: characters nie jest tablicą.");
+      characters = [];
+    }
 
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const page = parseInt(url.searchParams.get("page")) || 1;
-  const statusFilter = url.searchParams.get("status")?.toLowerCase(); // Konwersja statusu na małe litery
-  const nameFilter = url.searchParams.get("name")?.toLowerCase(); // Konwersja name na małe litery
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const page = parseInt(url.searchParams.get("page")) || 1;
+    const statusFilter = url.searchParams.get("status")?.toLowerCase();
+    const nameFilter = url.searchParams.get("name")?.toLowerCase();
 
-  let filteredCharacters = characters;
+    let filteredCharacters = characters;
 
-  if (statusFilter) {
-    filteredCharacters = filteredCharacters.filter(
-      (char) => char.status.toLowerCase() === statusFilter,
-    );
-  }
+    if (statusFilter) {
+      filteredCharacters = filteredCharacters.filter(
+        (char) => char.status.toLowerCase() === statusFilter,
+      );
+    }
 
-  if (nameFilter) {
-    filteredCharacters = filteredCharacters.filter((char) =>
-      char.name.toLowerCase().includes(nameFilter.toLowerCase()),
-    );
-  }
+    if (nameFilter) {
+      const regex = new RegExp(`^${nameFilter.trim()}$`, "i");
+      filteredCharacters = filteredCharacters.filter((char) =>
+        regex.test(char.name),
+      );
+    }
 
-  const startIndex = (page - 1) * CONFIG.PAGE_SIZE;
-  const endIndex = startIndex + CONFIG.PAGE_SIZE;
-  const pageCharacters = filteredCharacters.slice(startIndex, endIndex);
-  const totalPages = Math.ceil(filteredCharacters.length / CONFIG.PAGE_SIZE);
+    const startIndex = (page - 1) * CONFIG.PAGE_SIZE;
+    const endIndex = startIndex + CONFIG.PAGE_SIZE;
+    const pageCharacters = filteredCharacters.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(filteredCharacters.length / CONFIG.PAGE_SIZE);
 
-  const response = {
-    info: {
-      pages: totalPages,
-    },
-    results: pageCharacters.map((character) => ({
-      id: character.id,
-      name: character.name,
-      status: character.status,
-      species: character.species,
-      image: character.image,
-    })),
+    const response = {
+      info: {
+        pages: totalPages,
+      },
+      results: pageCharacters.map((character) => ({
+        id: character.id,
+        name: character.name,
+        status: character.status,
+        species: character.species,
+        image: character.image,
+      })),
+    };
+
+    res.writeHead(200);
+    res.end(JSON.stringify(response));
   };
 
-  res.writeHead(200);
-  res.end(JSON.stringify(response));
-};
-
-const handleGetCharacterById = async (req, res) => {
-  const characters = await readFileAndParse(res);
-  if (!characters) return;
-
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const idString = url.pathname.split("/").pop();
-  const id = idString ? parseInt(idString, 10) : NaN;
-
-  if (isNaN(id)) {
-    return sendError(res, 400, "Nieprawidłowe ID");
-  }
-
-  const character = characters.find((c) => c.id === id);
-
-  if (character) {
-    res.writeHead(200);
-    res.end(JSON.stringify(character));
+  if (dataInitialized.listenerCount("data-initialized") === 0) {
+    await getCharactersData();
   } else {
-    sendError(res, 404, "Character not found");
-  }
-};
-
-const handleDeleteCharacter = async (req, res) => {
-  const characters = await readFileAndParse(res);
-  if (!characters) return;
-
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const idString = url.pathname.split("/").pop();
-  const idToDelete = idString ? parseInt(idString, 10) : NaN;
-
-  if (isNaN(idToDelete)) {
-    return sendError(res, 400, "Nieprawidłowe ID");
-  }
-
-  const index = characters.findIndex((c) => c.id === idToDelete);
-
-  if (index !== -1) {
-    characters.splice(index, 1);
-    await saveData(characters);
-    res.writeHead(204);
-    res.end();
-  } else {
-    sendError(res, 404, "Character not found");
+    dataInitialized.once("data-initialized", async () => {
+      await getCharactersData();
+    });
   }
 };
 
@@ -187,8 +169,13 @@ const handlePostCharacter = async (req, res) => {
   let body = "";
   req.on("data", (chunk) => (body += chunk));
   req.on("end", async () => {
-    const characters = await readFileAndParse(res);
-    if (!characters) return;
+    if (!body) {
+      return sendError(res, 400, "Brak danych postaci.");
+    }
+    let characters = await readFileAndParse(res);
+    if (!Array.isArray(characters)) {
+      characters = [];
+    }
 
     try {
       const newCharacter = JSON.parse(body);
@@ -203,6 +190,7 @@ const handlePostCharacter = async (req, res) => {
       res.writeHead(201);
       res.end(JSON.stringify(newCharacter));
     } catch (error) {
+      console.error("Błąd dodawania postaci:", error);
       sendError(res, 400, "Niepoprawne dane");
     }
   });
