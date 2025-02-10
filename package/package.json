@@ -9,7 +9,5 @@
   "private": true,
   "author": "Pawel Putala",
   "license": "MIT",
-  "dependencies": {
-    "uuid": "^11.0.5"
-  }
+  "dependencies": {}
 }
