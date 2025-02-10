@@ -75,7 +75,7 @@ let dataInitialized = new Promise((resolve) => {
               JSON.stringify({ message: "Data initialized", characters }),
             );
           })
-          .catch((error) => sendError(res, 500, "Error saving data"));
+          .catch(() => sendError(res, 500, "Error saving data"));
       } catch (error) {
         sendError(res, 400, "Invalid JSON");
       }

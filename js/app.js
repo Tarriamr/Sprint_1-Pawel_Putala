@@ -5,10 +5,11 @@ let maxPage = 1;
 let currentPage = 1;
 let filters = { name: "", status: "" };
 
-const $buttonGoTo = document.querySelector("#goTo");
 const $displayElements = document.querySelector(".displayedElements");
+const $buttonGoTo = document.querySelector("#goTo");
 const $buttonLeft = document.querySelector("#left");
 const $buttonRight = document.querySelector("#right");
+const $buttonAddCharacter = document.querySelector("#addCharacter");
 const $inputName = document.querySelector("#name");
 const $radiosStatus = document.querySelectorAll('input[type="radio"]');
 const $info = document.querySelector(".info");
@@ -66,29 +67,30 @@ function displayCharacters(characters) {
 }
 
 function updateVisibility() {
-  const $createCharacter = document.querySelector("#createCharacter");
   const isSinglePage = maxPage === 1;
-
   $buttonLeft.style.visibility = isSinglePage ? "hidden" : "visible";
   $buttonRight.style.visibility = isSinglePage ? "hidden" : "visible";
-  $createCharacter.style.visibility = url === urlAPI ? "hidden" : "visible";
+  document.querySelector("#createCharacter").style.visibility =
+    url === urlAPI ? "hidden" : "visible"; // Direct querySelector
 }
 
-function getNewCharacters(filters, pageNumber = 1) {
-  fetchCharacters(pageNumber, filters)
-    .then(displayCharacters)
-    .catch((error) => {
-      console.error("An error occurred:", error);
-      $displayElements.innerHTML = "";
-      const message = document.createElement("div");
-      message.className = "empty";
-      message.textContent =
-        "Wystąpił błąd podczas pobierania danych. Spróbuj ponownie później.";
-      $displayElements.append(message);
-      currentPage = 1;
-      maxPage = 1;
-      updateVisibility();
-    });
+async function getNewCharacters(filters, pageNumber = 1) {
+  try {
+    const characters = await fetchCharacters(pageNumber, filters);
+    displayCharacters(characters);
+    updateVisibility();
+  } catch (error) {
+    console.error("An error occurred:", error);
+    $displayElements.innerHTML = "";
+    const message = document.createElement("div");
+    message.className = "empty";
+    message.textContent =
+      "Wystąpił błąd podczas pobierania danych. Spróbuj ponownie później.";
+    $displayElements.append(message);
+    currentPage = 1;
+    maxPage = 1;
+    updateVisibility();
+  }
 }
 
 function createCharacter({ id, image, name, species, status }) {
@@ -125,57 +127,53 @@ function createCharacter({ id, image, name, species, status }) {
     buttonRemoveCharacter.className = "removeButton";
     buttonRemoveCharacter.textContent = "Usuń postać";
     buttonRemoveCharacter.onclick = () =>
-      removeCharacter(id).then(() => getNewCharacters(filters));
+      removeCharacter(id).then(() => getNewCharacters(filters)); // Keep then for chaining
     characterContainer.append(buttonRemoveCharacter);
   }
 
   return characterContainer;
 }
 
-$buttonLeft.onclick = () => {
-  const newPage = currentPage === 1 ? maxPage : --currentPage;
-  getNewCharacters(filters, newPage);
-};
-
-$buttonRight.onclick = () => {
-  const newPage = currentPage === maxPage ? 1 : ++currentPage;
-  getNewCharacters(filters, newPage);
-};
-
+$buttonLeft.onclick = () =>
+  getNewCharacters(filters, currentPage === 1 ? maxPage : --currentPage);
+$buttonRight.onclick = () =>
+  getNewCharacters(filters, currentPage === maxPage ? 1 : ++currentPage);
 $inputName.oninput = () => {
   filters.name = $inputName.value.trim();
   getNewCharacters(filters);
 };
+$radiosStatus.forEach(
+  (radio) =>
+    (radio.onchange = () => {
+      filters.status = radio.value;
+      getNewCharacters(filters);
+    }),
+);
 
-$radiosStatus.forEach((radio) => {
-  radio.onchange = () => {
-    filters.status = radio.value;
-    getNewCharacters(filters);
-  };
-});
-
-$buttonGoTo.onclick = () => {
+$buttonGoTo.onclick = async () => {
   if (url === urlAPI) {
-    fetchCharacters(currentPage, filters).then((result) => {
+    try {
+      const result = await fetchCharacters(currentPage, filters);
       url = urlLS;
       $buttonGoTo.textContent = "Przejdź do API";
       resetFilters();
-      getNewCharacters(filters);
       $info.style.visibility = "hidden";
 
-      fetch(`${urlLS}/init`, {
+      const response = await fetch(`${urlLS}/init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(result),
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error("Network response was not ok.");
-          }
-          return response.json();
-        })
-        .catch((error) => console.error("Error sending data: ", error));
-    });
+      });
+
+      if (!response.ok) {
+        throw new Error("Network response was not ok.");
+      }
+
+      // Wywołanie getNewCharacters(filters) po pomyślnym wysłaniu danych
+      await getNewCharacters(filters);
+    } catch (error) {
+      console.error("Error sending data or initializing:", error);
+    }
   } else {
     $buttonGoTo.textContent = "Przejdź do Live Server";
     url = urlAPI;
@@ -193,12 +191,15 @@ function resetFilters() {
 
 async function removeCharacter(id) {
   try {
-    await fetch(`${urlLS}/${id}`, {
+    const response = await fetch(`${urlLS}/${id}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
     });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
   } catch (e) {
-    console.error(e);
+    console.error("Error removing character:", e);
   }
 }
 
@@ -209,28 +210,31 @@ async function addCharacter() {
   const addImage = "https://rickandmortyapi.com/api/character/avatar/3.jpeg";
 
   try {
-    await fetch(`${urlLS}`, {
+    const response = await fetch(`${urlLS}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: addName,
-        status: addStatus,
-        species: addSpecies,
+        name: addName.value,
+        status: addStatus.value,
+        species: addSpecies.value,
         image: addImage,
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok.");
-        }
-        return response.json();
-      })
-      .catch((error) => console.error("Error sending data: ", error));
+      }), // Use .value
+    });
 
-    getNewCharacters(filters);
+    if (!response.ok) {
+      throw new Error("Network response was not ok.");
+    }
+
+    await getNewCharacters(filters); // Await here to refresh display after add
+
+    addName.value = "";
+    addSpecies.value = "";
+    addStatus.value = "unknown";
   } catch (e) {
-    console.error(e);
+    console.error("Error adding character:", e);
   }
 }
+
+$buttonAddCharacter.onclick = addCharacter; // Direct assignment, addCharacter is already async
 
 getNewCharacters(filters);
