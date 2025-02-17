@@ -1,240 +1,196 @@
-const urlAPI = "https://rickandmortyapi.com/api/character";
-const urlLS = "http://localhost:3000/api/character";
-let url = urlAPI;
+const API_URL = "http://localhost:3000/character";
+const CHARACTERS_PER_PAGE = 5;
+
 let maxPage = 1;
-let currentPage = 1;
-let filters = { name: "", status: "" };
+let filters = {
+  name: "",
+  status: "",
+  page: 1,
+  limit: CHARACTERS_PER_PAGE,
+};
 
 const $displayElements = document.querySelector(".displayedElements");
-const $buttonGoTo = document.querySelector("#goTo");
 const $buttonLeft = document.querySelector("#left");
 const $buttonRight = document.querySelector("#right");
 const $buttonAddCharacter = document.querySelector("#addCharacter");
 const $inputName = document.querySelector("#name");
 const $radiosStatus = document.querySelectorAll('input[type="radio"]');
-const $info = document.querySelector(".info");
 
-$buttonGoTo.textContent = "Przejdź do Live Server";
-
-async function fetchCharacters(pageNumber, filters) {
+async function fetchCharacterCount(filters) {
   try {
-    const params = new URLSearchParams({ page: pageNumber, ...filters });
-    const response = await fetch(`${url}?${params}`);
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.error("No characters found.");
-        return null;
-      }
-      throw new Error(`An error occurred: ${response.status}`);
+    const params = new URLSearchParams();
+    if (filters.name) {
+      params.append("name_like", filters.name);
+    }
+    if (filters.status) {
+      params.append("status", filters.status);
     }
 
-    const {
-      info: { pages },
-      results,
-    } = await response.json();
-    maxPage = pages;
-    currentPage = pageNumber;
+    const response = await fetch(`${API_URL}?${params}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    const characters = await response.json();
+    return characters.length;
+  } catch (error) {
+    console.error("Error fetching character count:", error);
+    $displayElements.innerHTML = "<div class='empty'>Wystąpił błąd podczas pobierania liczby postaci.</div>";
+    return 0;
+  }
+}
 
-    return results.map(({ id, name, status, species, image }) => ({
-      id,
-      name,
-      status,
-      species,
-      image,
-    }));
+async function fetchCharacters(filters) {
+  try {
+    const params = new URLSearchParams();
+    if (filters.name) {
+      params.append("name_like", filters.name);
+    }
+    if (filters.status) {
+      params.append("status", filters.status);
+    }
+    if (filters.page) {
+      params.append("_page", filters.page);
+    }
+    if (filters.limit) {
+      params.append("_limit", filters.limit);
+    }
+
+    const response = await fetch(`${API_URL}?${params}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return await response.json();
   } catch (error) {
     console.error("Error fetching characters:", error);
-    throw new Error(`The error of getting data from API: ${error.message}`);
+    $displayElements.innerHTML = "<div class='empty'>Wystąpił błąd podczas pobierania postaci.</div>";
+    return [];
   }
 }
 
 function displayCharacters(characters) {
   $displayElements.innerHTML = "";
-
-  if (!characters || characters.length === 0) {
-    const message = document.createElement("div");
-    message.className = "empty";
-    message.textContent =
-      "Nie znaleziono postaci spełniających kryteria wyszukiwania.";
-    $displayElements.append(message);
+  if (characters.length === 0) {
+    $displayElements.innerHTML = "<div class='empty'>Brak postaci.</div>";
     return;
   }
-
-  characters.forEach((character) =>
-    $displayElements.append(createCharacter(character)),
-  );
+  characters.forEach((character) => {
+    const characterElement = createCharacterElement(character);
+    $displayElements.appendChild(characterElement);
+  });
 }
 
-function updateVisibility() {
-  const isSinglePage = maxPage === 1;
-  $buttonLeft.style.visibility = isSinglePage ? "hidden" : "visible";
-  $buttonRight.style.visibility = isSinglePage ? "hidden" : "visible";
-  document.querySelector("#createCharacter").style.visibility =
-    url === urlAPI ? "hidden" : "visible"; // Direct querySelector
+function updatePaginationButtons() {
+  $buttonLeft.style.visibility = maxPage <= 1 ? "hidden" : "visible";
+  $buttonRight.style.visibility = maxPage <= 1 ? "hidden" : "visible";
 }
 
-async function getNewCharacters(filters, pageNumber = 1) {
+async function loadCharacters(currentFilters = filters) {
   try {
-    const characters = await fetchCharacters(pageNumber, filters);
-    displayCharacters(characters);
-    updateVisibility();
-  } catch (error) {
-    console.error("An error occurred:", error);
-    $displayElements.innerHTML = "";
-    const message = document.createElement("div");
-    message.className = "empty";
-    message.textContent =
-      "Wystąpił błąd podczas pobierania danych. Spróbuj ponownie później.";
-    $displayElements.append(message);
-    currentPage = 1;
-    maxPage = 1;
-    updateVisibility();
-  }
-}
-
-function createCharacter({ id, image, name, species, status }) {
-  const characterContainer = document.createElement("div");
-  characterContainer.className = "character";
-  characterContainer.style.height = url === urlAPI ? "230px" : "270px";
-
-  const characterAvatar = document.createElement("div");
-  characterAvatar.className = "avatar";
-  characterAvatar.style.backgroundImage = `url("${image}")`;
-
-  const characterName = document.createElement("h2");
-  characterName.className = "name";
-  characterName.textContent = name;
-
-  const characterStatus = document.createElement("h3");
-  characterStatus.className = "status";
-  characterStatus.textContent = `Status: ${status}`;
-
-  const characterSpecies = document.createElement("h3");
-  characterSpecies.className = "species";
-  characterSpecies.textContent = `Gatunek: ${species}`;
-
-  characterContainer.append(
-    characterAvatar,
-    characterName,
-    characterStatus,
-    characterSpecies,
-  );
-
-  if (url === urlLS) {
-    const buttonRemoveCharacter = document.createElement("button");
-    buttonRemoveCharacter.id = id;
-    buttonRemoveCharacter.className = "removeButton";
-    buttonRemoveCharacter.textContent = "Usuń postać";
-    buttonRemoveCharacter.onclick = () =>
-      removeCharacter(id).then(() => getNewCharacters(filters)); // Keep then for chaining
-    characterContainer.append(buttonRemoveCharacter);
-  }
-
-  return characterContainer;
-}
-
-$buttonLeft.onclick = () =>
-  getNewCharacters(filters, currentPage === 1 ? maxPage : --currentPage);
-$buttonRight.onclick = () =>
-  getNewCharacters(filters, currentPage === maxPage ? 1 : ++currentPage);
-$inputName.oninput = () => {
-  filters.name = $inputName.value.trim();
-  getNewCharacters(filters);
-};
-$radiosStatus.forEach(
-  (radio) =>
-    (radio.onchange = () => {
-      filters.status = radio.value;
-      getNewCharacters(filters);
-    }),
-);
-
-$buttonGoTo.onclick = async () => {
-  if (url === urlAPI) {
-    try {
-      const result = await fetchCharacters(currentPage, filters);
-      url = urlLS;
-      $buttonGoTo.textContent = "Przejdź do API";
-      resetFilters();
-      $info.style.visibility = "hidden";
-
-      const response = await fetch(`${urlLS}/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result),
-      });
-
-      if (!response.ok) {
-        throw new Error("Network response was not ok.");
-      }
-
-      // Wywołanie getNewCharacters(filters) po pomyślnym wysłaniu danych
-      await getNewCharacters(filters);
-    } catch (error) {
-      console.error("Error sending data or initializing:", error);
+    const totalCount = await fetchCharacterCount(currentFilters);
+    maxPage = Math.ceil(totalCount / CHARACTERS_PER_PAGE);
+    if (isNaN(maxPage) || maxPage < 1) {
+      maxPage = 1;
     }
-  } else {
-    $buttonGoTo.textContent = "Przejdź do Live Server";
-    url = urlAPI;
-    resetFilters();
-    getNewCharacters(filters);
-    $info.style.visibility = "visible";
-  }
-};
 
-function resetFilters() {
-  filters = { name: "", status: "" };
-  $inputName.value = "";
-  $radiosStatus.forEach((radio) => (radio.checked = false));
+    const characters = await fetchCharacters(currentFilters);
+    displayCharacters(characters);
+    updatePaginationButtons();
+  } catch (error) {
+    console.error("Error in loadCharacters:", error);
+    $displayElements.innerHTML = "<div class='empty'>Wystąpił błąd ogólny. Spróbuj ponownie.</div>";
+  }
+}
+
+function createCharacterElement(character) {
+  const container = document.createElement("div");
+  container.className = "character";
+  container.innerHTML = `
+    <div class="avatar" style="background-image: url('${character.image}')"></div>
+    <h2 class="name">${character.name}</h2>
+    <h3 class="status">Status: ${character.status}</h3>
+    <h3 class="species">Gatunek: ${character.species}</h3>
+    <button class="removeButton" data-id="${character.id}">Usuń postać</button>
+  `;
+  const removeButton = container.querySelector(".removeButton");
+  removeButton.addEventListener("click", () => removeCharacter(character.id));
+  return container;
 }
 
 async function removeCharacter(id) {
   try {
-    const response = await fetch(`${urlLS}/${id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-    });
+    const response = await fetch(`${API_URL}/${id}`, {method: "DELETE"});
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
-  } catch (e) {
-    console.error("Error removing character:", e);
+    await loadCharacters(filters);
+  } catch (error) {
+    console.error("Error removing character:", error);
+    alert("Nie udało się usunąć postaci: " + error.message);
   }
 }
 
-async function addCharacter() {
-  const addName = document.querySelector("#characterName");
-  const addStatus = document.querySelector("#characterStatus");
-  const addSpecies = document.querySelector("#characterSpecies");
-  const addImage = "https://rickandmortyapi.com/api/character/avatar/3.jpeg";
+$buttonLeft.onclick = () => {
+  if (filters.page === 1) {
+    filters.page = maxPage;
+  } else {
+    --filters.page;
+  }
+  loadCharacters(filters);
+};
+
+$buttonRight.onclick = () => {
+  if (filters.page === maxPage) {
+    filters.page = 1;
+  } else {
+    ++filters.page;
+  }
+  loadCharacters(filters);
+};
+
+$inputName.addEventListener("input", () => {
+  filters.name = $inputName.value.trim();
+  filters.page = 1;
+  loadCharacters(filters);
+});
+
+$radiosStatus.forEach((radio) => {
+  radio.addEventListener("change", () => {
+    filters.status = radio.value;
+    filters.page = 1;
+    loadCharacters(filters);
+  });
+});
+
+$buttonAddCharacter.addEventListener("click", async () => {
+  const name = document.querySelector("#characterName").value;
+  const status = document.querySelector("#characterStatus").value;
+  const species = document.querySelector("#characterSpecies").value;
+  const image = "https://rickandmortyapi.com/api/character/avatar/3.jpeg";
 
   try {
-    const response = await fetch(`${urlLS}`, {
+    const response = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: addName.value,
-        status: addStatus.value,
-        species: addSpecies.value,
-        image: addImage,
-      }), // Use .value
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name, status, species, image}),
     });
 
     if (!response.ok) {
-      throw new Error("Network response was not ok.");
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
 
-    await getNewCharacters(filters); // Await here to refresh display after add
+    document.querySelector("#characterName").value = "";
+    document.querySelector("#characterSpecies").value = "";
+    document.querySelector("#characterStatus").value = "unknown";
 
-    addName.value = "";
-    addSpecies.value = "";
-    addStatus.value = "unknown";
-  } catch (e) {
-    console.error("Error adding character:", e);
+    await loadCharacters(filters);
+  } catch (error) {
+    console.error("Error adding character:", error);
+    alert("Dodawanie postaci nie powiodło się: " + error.message);
   }
-}
+});
 
-$buttonAddCharacter.onclick = addCharacter; // Direct assignment, addCharacter is already async
-
-getNewCharacters(filters);
+loadCharacters();
